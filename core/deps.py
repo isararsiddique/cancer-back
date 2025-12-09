@@ -96,3 +96,46 @@ def role_required(*role_slugs: str) -> Callable:
         return True
 
     return _checker
+
+
+def dashboard_required(required_dashboard: str) -> Callable:
+    """
+    Check if user's token is locked to the required dashboard type.
+    This prevents users from switching between hospital and researcher dashboards without re-login.
+    
+    Args:
+        required_dashboard: "hospital" or "researcher"
+    """
+    def _checker(
+        credentials: HTTPAuthorizationCredentials = Depends(security),
+        current_user=Depends(get_current_user)
+    ):
+        token = credentials.credentials
+        try:
+            payload = decode_token(token)
+            token_dashboard = payload.get("dashboard_type")
+            
+            # If token has no dashboard type (old tokens), require re-login
+            if token_dashboard is None:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Please login again to access this dashboard"
+                )
+            
+            # If token dashboard doesn't match required dashboard, require re-login
+            if token_dashboard != required_dashboard:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=f"This session is for {token_dashboard} dashboard. Please login to access {required_dashboard} dashboard."
+                )
+            
+            return True
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token"
+            )
+    
+    return _checker

@@ -10,7 +10,7 @@ import csv
 import io
 import uuid
 
-from core.deps import get_db, get_current_user
+from core.deps import get_db, get_current_user, dashboard_required
 from db.models.research import ResearchRequest
 from db.models.users import User
 
@@ -1355,7 +1355,8 @@ def download_research_data_json(
 @router.get("/requests/my")
 def list_my_requests(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    _dashboard_check: bool = Depends(dashboard_required("researcher"))
 ):
     """List all research requests created by the current researcher"""
     requests = db.query(ResearchRequest).filter(

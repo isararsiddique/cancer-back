@@ -14,10 +14,10 @@ router = APIRouter(prefix="/icd11", tags=["ICD-11"])
 
 logger = logging.getLogger(__name__)
 
-# WHO API Configuration
+# WHO API Configuration (matching index.html ECT settings)
 WHO_API_BASE = "https://id.who.int"
-WHO_TOKEN_URL = "https://icdaccessmanagement.who.int/connect/token"  # Correct token endpoint
-WHO_API_URL = f"{WHO_API_BASE}/icd/release/11"
+WHO_TOKEN_URL = "https://icdaccessmanagement.who.int/connect/token"
+WHO_API_URL = f"{WHO_API_BASE}/icd/release/11/2025-01"  # Updated to use 2025-01 version
 
 # Use provided credentials or fallback to environment variables
 WHO_CLIENT_ID = "ebea7984-077e-4366-a655-65531bdb26c5_c389da01-7ffe-42ed-b382-23370ef4ab1f"
@@ -95,6 +95,13 @@ def get_token():
     """
     Get WHO API access token (public endpoint, no auth required).
     Returns token for frontend to use with WHO Embedded Coding Tool.
+    
+    Configuration matches index.html ECT settings:
+    - apiServerUrl: "https://id.who.int"
+    - apiSecured: true
+    - icdMinorVersion: "2025-01"
+    - icdLinearization: "mms"
+    - popupMode: true
     """
     try:
         token = get_who_token()

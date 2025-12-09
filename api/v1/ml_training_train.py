@@ -101,8 +101,12 @@ def train_model_async(
         
         # Resource monitoring - Before training
         try:
-            cpu_before = psutil.cpu_percent(interval=1) if psutil else 0
-            mem_before = psutil.virtual_memory().used / (1024 * 1024) if psutil else 0  # MB
+            if psutil:
+                cpu_before = psutil.cpu_percent(interval=1)
+                mem_before = psutil.virtual_memory().used / (1024 * 1024)  # MB
+            else:
+                cpu_before = 0
+                mem_before = 0
         except:
             cpu_before = 0
             mem_before = 0
@@ -509,11 +513,15 @@ def train_model_async(
             
             # Resource monitoring - After training
             end_time = time.time()
-            cpu_after = psutil.cpu_percent(interval=1) if psutil else 0
-            mem_after = psutil.virtual_memory().used / (1024 * 1024) if psutil else 0
+            if psutil:
+                cpu_after = psutil.cpu_percent(interval=1)
+                mem_after = psutil.virtual_memory().used / (1024 * 1024)
+            else:
+                cpu_after = 0
+                mem_after = 0
             training_duration = int(end_time - start_time)
-            avg_cpu = (cpu_before + cpu_after) / 2 if psutil else 0
-            avg_mem = (mem_before + mem_after) / 2 if psutil else 0
+            avg_cpu = (cpu_before + cpu_after) / 2
+            avg_mem = (mem_before + mem_after) / 2
             
             resource_metrics = {
                 "training_duration_seconds": training_duration,
@@ -733,8 +741,16 @@ def train_model_async(
         
         # Resource monitoring - After training
         end_time = time.time()
-        cpu_after = psutil.cpu_percent(interval=1)
-        mem_after = psutil.virtual_memory().used / (1024 * 1024)
+        try:
+            if psutil:
+                cpu_after = psutil.cpu_percent(interval=1)
+                mem_after = psutil.virtual_memory().used / (1024 * 1024)
+            else:
+                cpu_after = 0
+                mem_after = 0
+        except:
+            cpu_after = 0
+            mem_after = 0
         training_duration = int(end_time - start_time)
         avg_cpu = (cpu_before + cpu_after) / 2
         avg_mem = (mem_before + mem_after) / 2

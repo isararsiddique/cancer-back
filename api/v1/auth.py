@@ -62,10 +62,16 @@ class UserResponse(BaseModel):
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _create_tokens_for_user(user: User, db: Session, request: Optional[FastAPIRequest] = None) -> TokenResponse:
+def _create_tokens_for_user(user: User, db: Session, request: Optional[FastAPIRequest] = None, dashboard_type: Optional[str] = None) -> TokenResponse:
     """
     Helper function to create access and refresh tokens for a user.
     Stores refresh token in database for session management.
+    
+    Args:
+        user: User object
+        db: Database session
+        request: Optional FastAPI request for logging
+        dashboard_type: Optional dashboard type to lock token to specific dashboard
     """
     try:
         # Get user roles - handle case where roles might not be loaded
@@ -85,6 +91,7 @@ def _create_tokens_for_user(user: User, db: Session, request: Optional[FastAPIRe
             "organization_id": str(user.organization_id) if user.organization_id else None,
             "roles": roles,
             "email": user.email,
+            "dashboard_type": dashboard_type,  # Lock token to specific dashboard
         }
         
         # Create tokens - access token expires in 24 hours (86400 seconds)
@@ -133,6 +140,7 @@ def _create_tokens_for_user(user: User, db: Session, request: Optional[FastAPIRe
 def login(
     username: str = Form(...),
     password: str = Form(...),
+    dashboard_type: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     request: FastAPIRequest = None
 ):
@@ -141,6 +149,11 @@ def login(
     
     Login with email and password to receive JWT tokens.
     Use the access_token in Authorization header: "Bearer <access_token>"
+    
+    Parameters:
+    - username: User email
+    - password: User password
+    - dashboard_type: Optional dashboard type ("hospital" or "researcher") - locks token to specific dashboard
     
     Returns:
     - access_token: JWT token valid for 1 hour (3600 seconds)
@@ -159,6 +172,7 @@ def login(
     - JWT tokens signed with HS256
     - Refresh tokens stored securely in database
     - Session tracking with IP and User-Agent
+    - Dashboard type locked in token - switching requires re-login
     """
     # username field is actually the email (OAuth2 standard)
     # Eager load roles to avoid lazy loading issues
@@ -196,7 +210,7 @@ def login(
     
     # Ensure transaction is clean before creating tokens
     try:
-        return _create_tokens_for_user(user, db, request)
+        return _create_tokens_for_user(user, db, request, dashboard_type)
     except Exception as e:
         # If token creation fails, rollback and re-raise
         db.rollback()

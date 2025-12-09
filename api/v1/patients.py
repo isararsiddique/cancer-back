@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse, FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
-from core.deps import permission_required, get_db, get_current_user
+from core.deps import permission_required, get_db, get_current_user, dashboard_required
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from core.audit import log_patient_create, log_patient_update, log_bulk_upload, log_data_export
 from db.models.registry import Patient
@@ -91,7 +91,7 @@ class PatientCreate(BaseModel):
     validation_status: Optional[str] = "Pending"
 
 
-@router.post("/", dependencies=[Depends(permission_required("patients.create"))])
+@router.post("/", dependencies=[Depends(permission_required("patients.create")), Depends(dashboard_required("hospital"))])
 def create_patient(
     payload: PatientCreate, 
     db: Session = Depends(get_db), 
