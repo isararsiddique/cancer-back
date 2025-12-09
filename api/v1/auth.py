@@ -15,16 +15,16 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import jwt
 
-from app.core.deps import get_db, get_current_user
-from app.core.security import (
+from core.deps import get_db, get_current_user
+from core.security import (
     create_access_token, 
     create_refresh_token,
     decode_token,
     verify_password,
 )
-from app.core.audit import log_login, log_logout
-from app.db.models.users import User
-from app.db.models.auth import RefreshToken
+from core.audit import log_login, log_logout
+from db.models.users import User
+from db.models.auth import RefreshToken
 
 from pydantic import BaseModel
 
@@ -74,7 +74,7 @@ def _create_tokens_for_user(user: User, db: Session, request: Optional[FastAPIRe
             roles = [r.slug for r in user.roles]
         else:
             # If roles not loaded, query them
-            from app.db.models.rbac import Role, user_roles
+            from db.models.rbac import Role, user_roles
             role_ids = db.query(user_roles.c.role_id).filter(user_roles.c.user_id == user.id).all()
             if role_ids:
                 role_slugs = db.query(Role.slug).filter(Role.id.in_([r[0] for r in role_ids])).all()

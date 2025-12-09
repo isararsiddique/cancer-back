@@ -4,11 +4,11 @@ from fastapi.responses import StreamingResponse, FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
-from app.core.deps import permission_required, get_db, get_current_user
+from core.deps import permission_required, get_db, get_current_user
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from app.core.audit import log_patient_create, log_patient_update, log_bulk_upload, log_data_export
-from app.db.models.registry import Patient
-from app.db.models.users import User
+from core.audit import log_patient_create, log_patient_update, log_bulk_upload, log_data_export
+from db.models.registry import Patient
+from db.models.users import User
 from pydantic import BaseModel
 from datetime import date, datetime
 import csv
