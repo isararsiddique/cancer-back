@@ -1,0 +1,6 @@
+INFO:     Will watch for changes in these directories: ['/Users/zain/Downloads/Isarar/REGISTRY_PLATFORM/Backend']
+INFO:     Uvicorn running on http://127.0.0.1:5000 (Press CTRL+C to quit)
+INFO:     Started reloader process [63316] using WatchFiles
+INFO:     Started server process [63444]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.

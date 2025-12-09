@@ -1,0 +1,52 @@
+# Core Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+
+# Database
+sqlalchemy==2.0.25
+alembic==1.13.1
+psycopg2-binary==2.9.9
+asyncpg==0.29.0
+
+# Authentication & Security
+pyjwt==2.8.0
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+cryptography==42.0.0
+
+# Configuration
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+
+# HTTP Client
+httpx==0.26.0
+requests==2.31.0
+
+# Redis (Optional)
+redis==5.0.1
+hiredis==2.3.2
+
+# ML & Data Science
+numpy==1.26.3
+pandas==2.1.4
+scikit-learn==1.4.0
+scipy==1.11.4
+
+# Docker SDK (for ML sandbox)
+docker==7.0.0
+
+# Utilities
+python-dateutil==2.8.2
+pytz==2023.3
+
+# Excel/CSV Export
+openpyxl==3.1.2
+xlsxwriter==3.1.9
+
+# Logging & Monitoring
+python-json-logger==2.0.7
+
+# CORS
+starlette==0.35.1
