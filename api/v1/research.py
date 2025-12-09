@@ -10,9 +10,9 @@ import csv
 import io
 import uuid
 
-from core.deps import get_db, get_current_user, dashboard_required
-from db.models.research import ResearchRequest
-from db.models.users import User
+from app.core.deps import get_db, get_current_user
+from app.db.models.research import ResearchRequest
+from app.db.models.users import User
 
 router = APIRouter(prefix="/research", tags=["research"])
 
@@ -39,10 +39,10 @@ def researcher_signup(
     Allow researchers to sign up for data access.
     Creates a user account with researcher role and assigns to "researcher" tenant.
     """
-    from core.security import get_password_hash
-    from db.models.users import User
-    from db.models.rbac import Role
-    from db.models.core import Tenant
+    from app.core.security import get_password_hash
+    from app.db.models.users import User
+    from app.db.models.rbac import Role
+    from app.db.models.core import Tenant
     
     try:
         # Check if email already exists
@@ -1355,8 +1355,7 @@ def download_research_data_json(
 @router.get("/requests/my")
 def list_my_requests(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    _dashboard_check: bool = Depends(dashboard_required("researcher"))
+    current_user: User = Depends(get_current_user)
 ):
     """List all research requests created by the current researcher"""
     requests = db.query(ResearchRequest).filter(

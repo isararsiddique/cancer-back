@@ -4,11 +4,11 @@ from fastapi.responses import StreamingResponse, FileResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 
-from core.deps import permission_required, get_db, get_current_user, dashboard_required
+from app.core.deps import permission_required, get_db, get_current_user
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from core.audit import log_patient_create, log_patient_update, log_bulk_upload, log_data_export
-from db.models.registry import Patient
-from db.models.users import User
+from app.core.audit import log_patient_create, log_patient_update, log_bulk_upload, log_data_export
+from app.db.models.registry import Patient
+from app.db.models.users import User
 from pydantic import BaseModel
 from datetime import date, datetime
 import csv
@@ -91,7 +91,7 @@ class PatientCreate(BaseModel):
     validation_status: Optional[str] = "Pending"
 
 
-@router.post("/", dependencies=[Depends(permission_required("patients.create")), Depends(dashboard_required("hospital"))])
+@router.post("/", dependencies=[Depends(permission_required("patients.create"))])
 def create_patient(
     payload: PatientCreate, 
     db: Session = Depends(get_db), 
