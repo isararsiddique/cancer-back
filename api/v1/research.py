@@ -1427,3 +1427,221 @@ def get_request_status(
     
     return response
 
+
+
+# ============================================================================
+# SECURE NOTEBOOK DATA ACCESS
+# ============================================================================
+
+@router.get("/secure-data/{request_id}")
+def get_secure_notebook_data(
+    request_id: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Secure endpoint for JupyterLite notebook data access.
+    Requires authentication and validates user access to the request.
+    Returns data only if user is authorized.
+    """
+    # Find the research request
+    request = db.query(ResearchRequest).filter(
+        ResearchRequest.request_id == request_id
+    ).first()
+    
+    if not request:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Research request not found"
+        )
+    
+    # Verify user owns this request
+    if request.created_by != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have access to this research request"
+        )
+    
+    # Verify request is approved
+    if request.status != 'APPROVED':
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Request is not approved. Current status: {request.status}"
+        )
+    
+    # Verify token hasn't expired
+    if request.token_expires_at and request.token_expires_at < datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access token has expired"
+        )
+    
+    # Use the same filter extraction logic as download endpoint
+    filters = request.filters or {}
+    
+    # Build dynamic query with filters
+    conditions = []
+    params = {}
+    
+    # Handle keyword-based filtering (search in icd11_description)
+    if filters.get('icd11_description') and not filters.get('icd11_main_code'):
+        keywords = filters['icd11_description'].strip()
+        if keywords:
+            keyword_list = [k.strip().lower() for k in keywords.replace(',', ' ').split() if k.strip()]
+            if keyword_list:
+                keyword_conditions = []
+                for i, keyword in enumerate(keyword_list):
+                    keyword_conditions.append(f"LOWER(icd11_description) LIKE :keyword_{i}")
+                    params[f'keyword_{i}'] = f"%{keyword}%"
+                if keyword_conditions:
+                    conditions.append(f"({' OR '.join(keyword_conditions)})")
+    
+    # Handle ICD-11 code filtering
+    if filters.get('icd11_main_code'):
+        icd11_code = filters['icd11_main_code']
+        if icd11_code == 'ALL' or icd11_code == 'ALL_DATA' or icd11_code == 'ALL_CANCER_TYPES':
+            pass  # Don't filter by ICD code
+        elif ',' in icd11_code:
+            codes = [c.strip() for c in icd11_code.split(',') if c.strip()]
+            if codes:
+                placeholders = ','.join([f':code_{i}' for i in range(len(codes))])
+                conditions.append(f"icd11_main_code IN ({placeholders})")
+                for i, code in enumerate(codes):
+                    params[f'code_{i}'] = code
+        else:
+            conditions.append("icd11_main_code = :icd11_main_code")
+            params['icd11_main_code'] = icd11_code
+    
+    if filters.get('diagnosis_year_from'):
+        conditions.append("diagnosis_year >= :diagnosis_year_from")
+        params['diagnosis_year_from'] = filters['diagnosis_year_from']
+    
+    if filters.get('diagnosis_year_to'):
+        conditions.append("diagnosis_year <= :diagnosis_year_to")
+        params['diagnosis_year_to'] = filters['diagnosis_year_to']
+    
+    if filters.get('age_from'):
+        conditions.append("age_at_diagnosis >= :age_from")
+        params['age_from'] = filters['age_from']
+    
+    if filters.get('age_to'):
+        conditions.append("age_at_diagnosis <= :age_to")
+        params['age_to'] = filters['age_to']
+    
+    if filters.get('gender'):
+        conditions.append("gender = :gender")
+        params['gender'] = filters['gender']
+    
+    if filters.get('t_category'):
+        conditions.append("t_category = :t_category")
+        params['t_category'] = filters['t_category']
+    
+    if filters.get('n_category'):
+        conditions.append("n_category = :n_category")
+        params['n_category'] = filters['n_category']
+    
+    if filters.get('m_category'):
+        conditions.append("m_category = :m_category")
+        params['m_category'] = filters['m_category']
+    
+    if filters.get('surgery_done') is not None:
+        conditions.append("surgery_done = :surgery_done")
+        params['surgery_done'] = filters['surgery_done']
+    
+    if filters.get('chemotherapy_done') is not None:
+        conditions.append("chemotherapy_done = :chemotherapy_done")
+        params['chemotherapy_done'] = filters['chemotherapy_done']
+    
+    if filters.get('radiotherapy_done') is not None:
+        conditions.append("radiotherapy_done = :radiotherapy_done")
+        params['radiotherapy_done'] = filters['radiotherapy_done']
+    
+    if filters.get('vital_status'):
+        conditions.append("vital_status = :vital_status")
+        params['vital_status'] = filters['vital_status']
+    
+    where_clause = " AND ".join(conditions) if conditions else "1=1"
+    
+    # Query anonymized database
+    query_sql = f"""
+        SELECT 
+            research_id,
+            gender,
+            nationality,
+            age_at_diagnosis,
+            diagnosis_year,
+            icd11_main_code,
+            icd11_description,
+            icd11_composite_expression,
+            icd11_topography,
+            icd11_morphology,
+            icd11_behavior_code,
+            icd11_stage_code,
+            laterality,
+            t_category,
+            n_category,
+            m_category,
+            multiple_primary_flag,
+            basis_of_diagnosis,
+            primary_site_confirmed,
+            surgery_done,
+            chemotherapy_done,
+            radiotherapy_done,
+            hormonal_therapy,
+            immunotherapy,
+            treatment_intent,
+            treatment_notes,
+            vital_status,
+            cause_of_death_icd11,
+            recurrence,
+            metastasis,
+            survival_months,
+            followup_notes,
+            data_source,
+            entry_mode,
+            validation_status
+        FROM registry.patients_anonymized
+        WHERE {where_clause}
+        ORDER BY diagnosis_year DESC, age_at_diagnosis DESC
+    """
+    
+    # Execute query
+    result = db.execute(text(query_sql), params)
+    rows = result.fetchall()
+    
+    # Column names
+    columns = ['research_id', 'gender', 'nationality', 'age_at_diagnosis', 'diagnosis_year',
+               'icd11_main_code', 'icd11_description', 'icd11_composite_expression',
+               'icd11_topography', 'icd11_morphology', 'icd11_behavior_code', 'icd11_stage_code',
+               'laterality', 't_category', 'n_category', 'm_category', 'multiple_primary_flag',
+               'basis_of_diagnosis', 'primary_site_confirmed', 'surgery_done', 'chemotherapy_done',
+               'radiotherapy_done', 'hormonal_therapy', 'immunotherapy', 'treatment_intent',
+               'treatment_notes', 'vital_status', 'cause_of_death_icd11', 'recurrence',
+               'metastasis', 'survival_months', 'followup_notes', 'data_source',
+               'entry_mode', 'validation_status']
+    
+    # Convert to JSON with transformations: null→0, false→0, true→1
+    json_data = []
+    for row in rows:
+        json_row = {}
+        for i, col in enumerate(columns):
+            value = row[i]
+            # Convert special types
+            if isinstance(value, (datetime, date)):
+                json_row[col] = value.isoformat()
+            elif value is None:
+                json_row[col] = 0  # Convert null to 0 for ML
+            elif isinstance(value, bool):
+                json_row[col] = 1 if value else 0  # Convert bool to 0/1
+            else:
+                json_row[col] = value
+        json_data.append(json_row)
+    
+    return {
+        "success": True,
+        "request_id": request_id,
+        "data": json_data,
+        "rows": len(json_data),
+        "columns": len(columns),
+        "message": "Data accessed securely via authenticated session"
+    }
