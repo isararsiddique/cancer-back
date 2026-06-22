@@ -1,11 +1,16 @@
-from fastapi import FastAPI, HTTPException, status, Query
+from fastapi import FastAPI, HTTPException, status, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.openapi.utils import get_openapi
 from typing import Optional
 import os
 
-from api.v1 import auth, users, roles, patients, organizations, research, admin, audit, icd11, projects, ml_training
-from api.v1 import ml_training_train, ml_execute
+from api.v1 import auth, users, roles, organizations, research, admin, audit, icd11, projects, ml_training
+from api.v1 import ml_training_train, ml_execute, patients, kernel, ml_predict, hospitals, ml_automl, onboarding, ingest, collaboration, serverless_analytics, ml_gpu_training
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from core.rate_limit import limiter
+# Using direct PostgreSQL patient API (S3/Athena removed)
 
 app = FastAPI(
     title="National Registry API",
@@ -125,19 +130,36 @@ app.add_middleware(
     max_age=3600,  # Cache preflight requests for 1 hour
 )
 
+# Add GZip compression for responses > 1KB (reduces bandwidth, improves latency)
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+# Rate limiting (slowapi): register limiter + 429 handler. Per-route limits are
+# declared with @limiter.limit(...) in the routers.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(users.router, prefix="/api/v1")
 app.include_router(roles.router, prefix="/api/v1")
-app.include_router(patients.router, prefix="/api/v1")
+app.include_router(patients.router, prefix="/api/v1")  # Direct PostgreSQL patient API
 app.include_router(organizations.router, prefix="/api/v1")
 app.include_router(research.router, prefix="/api/v1")
 app.include_router(projects.router, prefix="/api/v1")
 app.include_router(ml_training.router, prefix="/api/v1")
 app.include_router(ml_training_train.router, prefix="/api/v1")
+app.include_router(ml_automl.router, prefix="/api/v1")
+app.include_router(ml_gpu_training.router, prefix="/api/v1")
+app.include_router(onboarding.router, prefix="/api/v1")
+app.include_router(ingest.router, prefix="/api/v1")
+app.include_router(collaboration.router, prefix="/api/v1")
+app.include_router(serverless_analytics.router, prefix="/api/v1")
 app.include_router(ml_execute.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 app.include_router(audit.router, prefix="/api/v1")
 app.include_router(icd11.router, prefix="/api/v1")
+app.include_router(kernel.router, prefix="/api/v1")
+app.include_router(ml_predict.router, prefix="/api/v1")
+app.include_router(hospitals.router, prefix="/api/v1")
 
 # Legacy endpoints for WHO ECT widget compatibility
 @app.get("/api/token", dependencies=[])
@@ -242,6 +264,75 @@ def legacy_icd_endpoint(code: str):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get ICD code: {str(e)}"
         )
+
+# Health check and cache status endpoints
+@app.get("/health", tags=["system"])
+def health_check(response: Response):
+    """Health check for load balancers/monitoring. Probes DB and cache."""
+    checks = {"database": "unknown", "cache": "unknown"}
+    healthy = True
+
+    # Database
+    try:
+        from db.session import engine
+        from sqlalchemy import text as _text
+        with engine.connect() as conn:
+            conn.execute(_text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception as e:
+        checks["database"] = f"error: {type(e).__name__}"
+        healthy = False
+
+    # Cache (non-fatal: in-memory fallback is acceptable)
+    try:
+        from core.cache import cache
+        stats = cache.get_stats()
+        checks["cache"] = "ok" if stats else "degraded"
+    except Exception as e:
+        checks["cache"] = f"error: {type(e).__name__}"
+
+    if not healthy:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+
+    return {
+        "status": "healthy" if healthy else "degraded",
+        "service": "cancer-registry-api",
+        "checks": checks,
+    }
+
+
+@app.get("/api/v1/cache/status", tags=["system"])
+def cache_status():
+    """Get cache statistics and status"""
+    try:
+        from core.cache import cache
+        return {
+            "status": "ok",
+            "cache": cache.get_stats()
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
+
+@app.post("/api/v1/cache/clear", tags=["system"])
+def clear_cache(pattern: str = Query("*", description="Cache key pattern to clear")):
+    """Clear cache entries matching pattern (admin only)"""
+    try:
+        from core.cache import cache
+        deleted = cache.delete_pattern(f"*{pattern}*")
+        return {
+            "status": "ok",
+            "deleted_keys": deleted
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+
 
 # Set custom OpenAPI schema AFTER all routes are registered
 # This ensures we can properly remove OAuth2 from the schema
