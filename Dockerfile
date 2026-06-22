@@ -14,14 +14,16 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements first for better caching
 COPY requirements.txt .
 
-# Install Python dependencies globally (not --user)
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies (skip heavy Jupyter/JupyterLite/GPU packages for slim server image)
+RUN grep -v -i 'jupyterlite\|jupyter-core\|notebook\|micropip\|matplotlib\|seaborn\|plotly\|xgboost\|scipy\|torch\|nvidia' requirements.txt > requirements-slim.txt && \
+    pip install --no-cache-dir -r requirements-slim.txt || \
+    pip install --no-cache-dir -r requirements-slim.txt --no-deps
 
 # Production stage
 FROM python:3.11-slim
 
 # Set working directory
-WORKDIR /workspace
+WORKDIR /app
 
 # Install runtime dependencies only
 RUN apt-get update && apt-get install -y \
@@ -33,18 +35,16 @@ RUN apt-get update && apt-get install -y \
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
 
-# Copy application code to /workspace/app so imports work as app.api.v1
-COPY . /workspace/app/
-
-# Copy main.py to workspace root
-COPY main.py /workspace/
+# Copy application code
+COPY . /app/
 
 # Set PYTHONPATH so imports work correctly
-ENV PYTHONPATH=/workspace
+ENV PYTHONPATH=/app
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /workspace
+    mkdir -p /app/uploads/research && \
+    chown -R appuser:appuser /app
 
 # Switch to non-root user
 USER appuser
@@ -57,4 +57,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the application
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
